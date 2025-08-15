@@ -10,6 +10,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Tuple, Any
 import logging
+import re
 
 
 class ResultsAnalyzer:
@@ -51,7 +52,8 @@ class ResultsAnalyzer:
 
         report += "## Success Rates by Question Type\n\n"
         for ptype, stats in type_stats.items():
-            success_rate = (stats['accurate'] / stats['total']) * 100
+            success_rate = (stats['accurate'] / stats['total']
+                            ) * 100 if stats['total'] else 0.0
             report += f"- **{ptype.title()}**: {success_rate:.1f}% ({stats['accurate']}/{stats['total']})\n"
 
         report += "\n## Key Findings\n\n"
@@ -64,7 +66,7 @@ class ResultsAnalyzer:
 
         if accurate_results:
             report += "### Successful Patterns\n"
-            for result in accurate_results[:3]:  # Top 3
+            for result in accurate_results[:3]:  # Top 3 examples
                 report += f"- {result['question']}: Success\n"
 
         if inaccurate_results:
@@ -152,13 +154,16 @@ def create_syracuse_2024_dataset():
 
     # Calculate additional statistics
     df['Shooting_Pct'] = np.where(
-        df['Shots'] > 0, (df['Goals'] / df['Shots']) * 100, 0)
+        df['Shots'] > 0, (df['Goals'] / df['Shots']) * 100, 0.0)
     df['Goals_Per_Game'] = np.where(
-        df['Games_Played'] > 0, df['Goals'] / df['Games_Played'], 0)
+        df['Games_Played'] > 0, df['Goals'] / df['Games_Played'], 0.0)
     df['Points_Per_Game'] = np.where(
-        df['Games_Played'] > 0, df['Points'] / df['Games_Played'], 0)
+        df['Games_Played'] > 0, df['Points'] / df['Games_Played'], 0.0)
 
-    # Add team-level statistics
+    # Derive team-level statistics from the DataFrame to avoid mismatch
+    total_goals = int(df['Goals'].sum())
+    total_assists = int(df['Assists'].sum())
+
     team_stats = {
         'season_record': '16-6',
         'total_games': 22,
@@ -167,12 +172,13 @@ def create_syracuse_2024_dataset():
         'neutral_record': '2-2',
         'conference_record': '9-1',
         'non_conference_record': '7-5',
-        'total_team_goals': 335,
-        'total_team_assists': 150,
-        'team_shots': 335,
-        'team_shot_pct': 68,
-        'goals_per_game': 15.23,
-        'goals_against_per_game': 9.63
+        'total_team_goals': total_goals,     # derived
+        'total_team_assists': total_assists,  # derived
+        'team_shots': int(df['Shots'].sum()),
+        'team_shot_pct': round((total_goals / max(1, int(df['Shots'].sum()))) * 100, 2) if int(df['Shots'].sum()) > 0 else 0,
+        # keep these as placeholders if you need them; otherwise compute properly from game logs
+        'goals_per_game': None,
+        'goals_against_per_game': None
     }
 
     return df, team_stats
@@ -200,34 +206,47 @@ class SyracuseDataValidator:
         stats['wins'] = 16
         stats['losses'] = 6
 
-        # Player statistics - only include players with meaningful contributions
-        active_players = self.df[self.df['Goals'] > 0].copy()
-
         # Top performers
         stats['top_scorer'] = self.df.loc[self.df['Goals'].idxmax(), 'Player']
-        stats['top_scorer_goals'] = self.df['Goals'].max()
+        stats['top_scorer_goals'] = int(self.df['Goals'].max())
 
         stats['top_assist'] = self.df.loc[self.df['Assists'].idxmax(),
                                           'Player']
-        stats['top_assist_count'] = self.df['Assists'].max()
+        stats['top_assist_count'] = int(self.df['Assists'].max())
 
         stats['top_points'] = self.df.loc[self.df['Points'].idxmax(), 'Player']
-        stats['top_points_count'] = self.df['Points'].max()
+        stats['top_points_count'] = int(self.df['Points'].max())
 
         # Team totals
-        stats['total_goals'] = self.df['Goals'].sum()
-        stats['total_assists'] = self.df['Assists'].sum()
-        stats['total_points'] = self.df['Points'].sum()
+        stats['total_goals'] = int(self.df['Goals'].sum())
+        stats['total_assists'] = int(self.df['Assists'].sum())
+        stats['total_points'] = int(self.df['Points'].sum())
 
         # Shooting statistics (minimum 10 shots for qualification)
         qualified_shooters = self.df[self.df['Shots'] >= 10].copy()
         if not qualified_shooters.empty:
             best_shooter_idx = qualified_shooters['Shooting_Pct'].idxmax()
-            stats['best_shooter'] = qualified_shooters.loc[best_shooter_idx, 'Player']
-            stats['best_shooting_pct'] = qualified_shooters.loc[best_shooter_idx, 'Shooting_Pct']
+            stats['best_shooter'] = str(
+                qualified_shooters.loc[best_shooter_idx, 'Player'])
+            stats['best_shooting_pct'] = float(
+                qualified_shooters.loc[best_shooter_idx, 'Shooting_Pct'])
 
         # Active scorers (players with at least 5 goals)
-        stats['active_scorers'] = len(self.df[self.df['Goals'] >= 5])
+        stats['active_scorers'] = int((self.df['Goals'] >= 5).sum())
+
+        # Intermediate ground truth
+        top3 = self.df.sort_values('Goals', ascending=False).head(3).copy()
+        top3['Shooting_Pct_calc'] = np.where(
+            top3['Shots'] > 0, (top3['Goals'] / top3['Shots']) * 100.0, 0.0
+        )
+        stats['top3_shooting'] = [
+            {
+                'player': str(row['Player']),
+                'shooting_pct': round(float(row['Shooting_Pct_calc']), 1)
+            }
+            for _, row in top3.iterrows()
+        ]
+        stats['count_ge_10_goals'] = int((self.df['Goals'] >= 10).sum())
 
         return stats
 
@@ -251,12 +270,59 @@ TOP PERFORMERS:
         for _, player in top_scorers.iterrows():
             if player['Goals'] > 0:  # Only include actual contributors
                 shooting_pct = (
-                    player['Goals'] / player['Shots'] * 100) if player['Shots'] > 0 else 0
-                context += f"- {player['Player']}: {player['Goals']}G, {player['Assists']}A, {player['Points']}Pts, {player['Shots']} shots ({shooting_pct:.1f}%)\n"
+                    player['Goals'] / player['Shots'] * 100.0) if player['Shots'] > 0 else 0.0
+                context += f"- {player['Player']}: {int(player['Goals'])}G, {int(player['Assists'])}A, {int(player['Points'])}Pts, {int(player['Shots'])} shots ({shooting_pct:.1f}%)\n"
 
-        context += f"\nTEAM TOTALS: {self.ground_truth['total_goals']} Goals, {self.ground_truth['total_assists']} Assists"
+        # Always use DataFrame-derived totals to avoid mismatch
+        team_goals = int(self.df['Goals'].sum())
+        team_assists = int(self.df['Assists'].sum())
+        context += f"\nTEAM TOTALS: {team_goals} Goals, {team_assists} Assists"
 
         return context
+
+    # ---------- NEW HELPERS FOR PART 2 ----------
+    def _extract_numbers_and_percents(self, text: str) -> Tuple[List[float], List[float]]:
+        """Extract numeric values (ints/decimals) and percentages from text."""
+        # integers and decimals
+        nums = re.findall(r'\b\d+(?:\.\d+)?\b', text)
+        # tokens like "60.9%" or "60.9 %"
+        pcts = re.findall(r'\b\d+(?:\.\d+)?\s*%', text)
+        pct_vals = [float(p.rstrip('%').strip()) for p in pcts]
+        vals = [float(n) for n in nums]
+        return vals, pct_vals
+
+    def _score_strategic_response(self, text: str) -> Dict[str, int]:
+        """Score a free-form strategic response using a simple rubric."""
+        text_l = text.lower()
+
+        # Specificity: mentions real players and numbers
+        names = [str(n).lower()
+                 for n in self.df['Player'].tolist() if str(n).strip()]
+        mentions = sum(1 for n in names if n in text_l)
+        contains_numbers = bool(re.search(r'\d', text_l))
+        specificity = 1 + min(4, mentions // 2) + \
+            (1 if contains_numbers else 0)
+        specificity = min(5, specificity)
+
+        # Actionability: presence of concrete coaching verbs/ideas
+        action_terms = [
+            'focus', 'improve', 'increase', 'reduce', 'practice', 'drill', 'scheme',
+            'set play', 'assign', 'rotate', 'substitute', 'optimize', 'work on',
+            'emphasize', 'target', 'adjust', 'press', 'zone', 'man-to-man', 'transition'
+        ]
+        actionability = 1 + sum(1 for t in action_terms if t in text_l)
+        actionability = max(1, min(5, actionability))
+
+        # Plausibility: no contradictions to key stats (e.g., wrong top scorer)
+        plausible = True
+        top_scorer = str(self.ground_truth['top_scorer']).lower()
+        # If they explicitly claim a different top scorer, penalize
+        if ('top scorer' in text_l or 'leading scorer' in text_l) and (top_scorer not in text_l):
+            plausible = False
+        plausibility = 5 if plausible else 2
+
+        return {'specificity': specificity, 'actionability': actionability, 'plausibility': plausibility}
+    # -------------------------------------------
 
     def validate_response(self, llm_response: str, question_type: str) -> Dict[str, Any]:
         """Validate LLM response against Syracuse ground truth"""
@@ -270,7 +336,8 @@ TOP PERFORMERS:
             'llm_answer': llm_response[:100] + "..." if len(llm_response) > 100 else llm_response
         }
 
-        numbers = self._extract_numbers(llm_response)
+        # for legacy integer-only checks
+        legacy_ints = self._extract_numbers_legacy(llm_response)
         response_lower = llm_response.lower()
 
         if question_type == 'season_record':
@@ -285,12 +352,12 @@ TOP PERFORMERS:
         elif question_type == 'total_games':
             expected = self.ground_truth['total_games']
             result['expected_answer'] = expected
-            if numbers and expected in numbers:
+            if legacy_ints and expected in legacy_ints:
                 result['accuracy'] = True
             else:
                 result['error_type'] = 'incorrect_calculation'
                 result['notes'].append(
-                    f"Expected {expected}, found numbers: {numbers}")
+                    f"Expected {expected}, found numbers: {legacy_ints}")
 
         elif question_type == 'top_scorer':
             expected_player = self.ground_truth['top_scorer']
@@ -299,7 +366,7 @@ TOP PERFORMERS:
 
             if expected_player.lower() in response_lower:
                 result['accuracy'] = True
-                if expected_goals in numbers:
+                if expected_goals in legacy_ints:
                     result['notes'].append("Correctly included goal count")
             else:
                 result['error_type'] = 'incorrect_player'
@@ -308,12 +375,12 @@ TOP PERFORMERS:
         elif question_type == 'team_goals':
             expected = self.ground_truth['total_goals']
             result['expected_answer'] = expected
-            if numbers and expected in numbers:
+            if legacy_ints and expected in legacy_ints:
                 result['accuracy'] = True
             else:
                 result['error_type'] = 'incorrect_calculation'
                 result['notes'].append(
-                    f"Expected {expected}, found: {numbers}")
+                    f"Expected {expected}, found: {legacy_ints}")
 
         elif question_type == 'top_assists':
             expected_player = self.ground_truth['top_assist']
@@ -326,11 +393,57 @@ TOP PERFORMERS:
                 result['error_type'] = 'incorrect_player'
                 result['notes'].append(f"Expected {expected_player}")
 
+        # ---------- NEW VALIDATORS FOR PART 2 ----------
+        elif question_type == 'shooting_analysis':
+            # expected: top 3 goal scorers' shooting % (rounded 1-dec), match by name with tolerance
+            expected = [(d['player'].lower(), d['shooting_pct'])
+                        for d in self.ground_truth['top3_shooting']]
+            result['expected_answer'] = self.ground_truth['top3_shooting']
+
+            vals, pcts = self._extract_numbers_and_percents(llm_response)
+            candidates = pcts + vals  # allow either "60.9%" or 60.9 (no %)
+            tol = 0.5
+            hits = 0
+            for name, pct in expected:
+                if name in response_lower:
+                    if any(abs(float(x) - float(pct)) <= tol for x in candidates):
+                        hits += 1
+            # require at least 2 of 3 correct to pass
+            result['accuracy'] = (hits >= 2)
+            if not result['accuracy']:
+                result['error_type'] = 'incorrect_shooting_analysis'
+                result['notes'].append(
+                    f"Matched {hits}/3 expected player% entries (±{tol})")
+
+        elif question_type == 'offensive_balance':
+            # expected: number of players with >= 10 goals
+            count_ge_10 = self.ground_truth['count_ge_10_goals']
+            result['expected_answer'] = count_ge_10
+            vals, _ = self._extract_numbers_and_percents(llm_response)
+            # accept if any integer-rounded value equals expected
+            ok = any(int(round(v)) == int(count_ge_10) for v in vals)
+            result['accuracy'] = ok
+            if not ok:
+                result['error_type'] = 'incorrect_offensive_depth'
+                result['notes'].append(
+                    f"Expected {count_ge_10}, found: {vals}")
+
+        elif question_type == 'strategic_analysis':
+            # rubric-based evaluation
+            scores = self._score_strategic_response(llm_response)
+            result['expected_answer'] = 'Rubric-based (Specificity, Actionability, Plausibility >= 3)'
+            result['notes'].append(f"Scores: {scores}")
+            result['accuracy'] = (scores['specificity'] >= 3 and
+                                  scores['actionability'] >= 3 and
+                                  scores['plausibility'] >= 3)
+            if not result['accuracy']:
+                result['error_type'] = 'insufficient_rubric_scores'
+        # ------------------------------------------------
+
         return result
 
-    def _extract_numbers(self, text: str) -> List[int]:
-        """Extract integer values from text"""
-        import re
+    def _extract_numbers_legacy(self, text: str) -> List[int]:
+        """Extract integer values from text (legacy helper kept for basic checks)."""
         numbers = re.findall(r'\b\d+\b', text)
         return [int(n) for n in numbers]
 
@@ -349,6 +462,10 @@ TOP PERFORMERS:
             f"Best Shooter: {self.ground_truth.get('best_shooter', 'N/A')} ({self.ground_truth.get('best_shooting_pct', 0):.1f}%)")
         print(
             f"Active Scorers (5+ goals): {self.ground_truth['active_scorers']}")
+        # Part 2 ground truth
+        print("Top-3 Shooting %:", self.ground_truth['top3_shooting'])
+        print("Players with ≥10 goals:",
+              self.ground_truth['count_ge_10_goals'])
 
 
 def generate_syracuse_test_prompts(validator: SyracuseDataValidator) -> List[Dict[str, str]]:
@@ -498,6 +615,9 @@ def validate_llm_response(validator, analyzer):
     print("- top_scorer")
     print("- team_goals")
     print("- top_assists")
+    print("- shooting_analysis")
+    print("- offensive_balance")
+    print("- strategic_analysis")
 
     question_type = input("Enter question type: ").strip()
     llm_response = input("Paste LLM response here: ").strip()
@@ -511,13 +631,11 @@ def validate_llm_response(validator, analyzer):
     if result['error_type']:
         print(f"Error Type: {result['error_type']}")
     if result['notes']:
-        print(f"Notes: {'; '.join(result['notes'])}")
+        print(f"Notes: {'; '.join(str(n) for n in result['notes'])}")
     print(f"{'='*50}")
 
     # Add to analyzer
     analyzer.add_result(question_type, question_type, llm_response, result)
-
-# Updated main function
 
 
 def main():

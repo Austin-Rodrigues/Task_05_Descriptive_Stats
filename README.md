@@ -35,7 +35,7 @@ I've designed three levels of questions to progressively challenge the LLMs:
 
 ## The Syracuse 2024 Dataset
 
-**Team Performance:** 16-6 record (22 games total)
+**Team Performance:** 16-6 record (22 games total)  
 - Home: 9-2 | Away: 5-2 | Conference: 9-1
 
 **Key Players:**
@@ -78,95 +78,49 @@ LLMs excel at straightforward data retrieval when the information is clearly pre
 - Strategic coaching recommendations
 - Cross-validation with other LLMs
 
-## Repository Structure
 
-```
-Task_05_Descriptive_Stats/
-├── README.md                           # This overview
-├── Testing_and_Validation.py           # Main testing framework
-├── syracuse_lacrosse_2024_real.csv     # Dataset (season statistics)
-├── reports/
-│   ├── july_31_progress.md            # Part 1 findings
-│   └── testing_methodology.md         # Detailed approach
-├── results/
-│   ├── basic_questions_results.json   # Raw test results
-│   └── validation_summaries/          # Analysis reports
-└── prompts/
-    ├── basic_prompts.txt              # Simple questions
-    ├── intermediate_prompts.txt       # Calculation questions  
-    └── strategic_prompts.txt          # Complex analysis questions
-```
+## Key Insights So Far (Part 1)
+1. **Clear Data Presentation**: LLMs handle well-formatted statistics effectively.
+2. **Direct Questions**: Straightforward queries get accurate responses.
+3. **Validation Framework**: Automated checking catches errors reliably.
+4. No hallucination of player names or statistics encountered.
 
-## Key Insights So Far
+---
 
-### What's Working Well
-1. **Clear Data Presentation**: LLMs handle well-formatted statistics effectively
-2. **Direct Questions**: Straightforward queries get accurate responses
-3. **Validation Framework**: Automated checking catches errors reliably
+## Latest Findings (Part 2 – August 15, 2025)
 
-### What I'm Curious About
-1. **Calculation Complexity**: Will accuracy drop with multi-step math?
-2. **Domain Knowledge**: Can LLMs demonstrate actual lacrosse understanding?
-3. **Strategic Thinking**: Will recommendations be generic or insightful?
+Following the initial success in Part 1, Phase 2 testing introduced **intermediate calculations** and **complex strategic analysis**.
 
-### Unexpected Discoveries
-- The LLM consistently included context in responses (not just bare numbers)
-- Response formatting was naturally appropriate for the question type
-- No hallucination of player names or statistics encountered
+### **Intermediate Questions**
+- **Shooting % (Top 3 Scorers)** – Correct within ±0.5% tolerance.
+- **Players with ≥10 Goals** – Incorrect (8 reported vs 9 actual).
 
-## Methodology Notes
+### **Complex Strategic Questions (Rubric Scored)**
+| Prompt | Specificity | Actionability | Plausibility | Verdict |
+|--------|-------------|---------------|--------------|---------|
+| Improve 16–6 to 18–4 | 2 | 5 | 2 | Fail |
+| Biggest Impact Beyond Goals | 4 | 4 | 4 | Pass |
 
-### Why Syracuse Women's Lacrosse?
-- **Complete Dataset**: Full season statistics available
-- **Manageable Size**: 34 players, 22 games - fits well in LLM context
-- **Success Story**: 16-6 record provides both strengths and areas for analysis
-- **Personal Interest**: Following the team made the research more engaging
+### **Key Insights**
+**Strengths:**
+- Accurate numeric calculations when formulas are clear.
+- Clear formatting and explanation of results.
+- Actionable coaching advice in certain contexts.
 
-### Validation Approach
-Rather than subjectively judging whether answers "seem right," I built objective validation:
-- Extract numerical values from LLM responses
-- Compare against calculated ground truth
-- Flag discrepancies automatically
-- Track patterns in errors and successes
+**Weaknesses:**
+- Occasionally misses players in threshold-based lists.
+- Strategic recommendations can lack specificity or balance.
 
-## Looking Ahead
+**Pattern Observed:**
+- Fact-based, formula-driven prompts produce consistent accuracy.
+- Open-ended strategy prompts benefit from explicit context.
 
-### August 15 Goals
-- Complete intermediate and complex question testing
-- Compare Claude performance with ChatGPT and Copilot
-- Develop "coaching recommendation" prompt templates
-- Generate visualizations if LLMs can create them
+---
 
-### Research Questions to Explore
-- Do different LLMs have different strengths in sports analysis?
-- Can prompt engineering significantly improve complex reasoning?
-- What's the ceiling for LLM sports analytics capabilities?
-
-## How to Use This Framework
-
-If you want to replicate this study or test LLMs with your own sports data:
-
-1. **Prepare Your Dataset**: Clean CSV with player statistics
-2. **Run the Framework**: `python Testing_and_Validation.py`
-3. **Export Data Context**: Use option 5 to generate LLM-ready prompts
-4. **Test Your LLM**: Copy prompts to Claude/ChatGPT/etc.
-5. **Validate Results**: Use option 2 to check accuracy
-6. **Generate Reports**: Use option 4 for summary analysis
-
-## Personal Reflections
-
-This research has been more interesting than I expected. While the basic results aren't surprising (LLMs are good at data retrieval), the process has revealed nuances in how these systems handle structured information.
-
-I'm particularly curious to see how they perform on the strategic questions. Can an LLM provide coaching insights that would actually be useful? Or will the responses be generic advice that could apply to any team?
-
-The validation framework has been invaluable - it's easy to think an LLM response "sounds good" without actually checking if it's correct. Systematic validation reveals gaps that casual evaluation might miss.
-
-## Next Steps
-
-- Continue testing through August 15
-- Document the full range of LLM capabilities and limitations
-- Create actionable recommendations for using LLMs in sports analytics
-- Submit comprehensive findings for final evaluation
+## Updated Next Steps
+- Cross-validate performance with ChatGPT and Copilot.
+- Integrate defensive metrics into prompts to balance recommendations.
+- Explore prompt engineering to improve specificity in strategic answers.
 
 ---
 
